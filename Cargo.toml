@@ -1,0 +1,15 @@
+[package]
+name = "process_regions"
+version = "0.1.0"
+authors = ["Christopher Cole <ccole@well.ox.ac.uk>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.3.14"
+log = "0.4"
+env_logger = "0.7.1"
+rust-htslib = "*"
+rayon = "1.1"
+assert_cmd = "1.0.1"
+theban_interval_tree = "0.7.1"
+memrange = "0.1.3"
