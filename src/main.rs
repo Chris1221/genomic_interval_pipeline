@@ -11,10 +11,12 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use rust_htslib::faidx;
 use pbr::ProgressBar;
+use flate2::read::GzDecoder;
 
 extern crate ndarray;
 extern crate theban_interval_tree;
 extern crate structopt;
+extern crate flate2;
 extern crate hdf5;
 
 
@@ -129,7 +131,8 @@ fn main() -> std::io::Result<()> {
 
     for (bed_file, bed_idx) in metadata {
         info!("\tAdding regions from {}...", bed_file);
-        let bed = File::open(bed_file)?;
+        let bed = GzDecoder::new(File::open(bed_file)?);
+        //let bed = File::open(bed_file)?;
         let bed_reader = BufReader::new(bed);
 
 
