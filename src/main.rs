@@ -10,6 +10,7 @@ use ndarray::prelude::*;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use rust_htslib::faidx;
+use pbr::ProgressBar;
 
 extern crate ndarray;
 extern crate theban_interval_tree;
@@ -62,6 +63,9 @@ fn main() -> std::io::Result<()> {
     for i in 19..21 { test.push(i) } 
     let mut validation = Vec::new();
     for i in 21..23 { validation.push(i) }
+
+    let mut valid_chromosomes = Vec::new();
+    for i in 1..23 { valid_chromosomes.push(format!("{}{}", "chr", i)) }
 
     // Hashmap to hold the bed indices
     let mut metadata = HashMap::new();
@@ -136,6 +140,11 @@ fn main() -> std::io::Result<()> {
             let idx_vec = vec![bed_idx];
             let range = Range::new(vec[1].parse::<u64>().unwrap(), vec[2].parse::<u64>().unwrap());
 
+            // If not a numeric chromosome, skip for now.
+            if !valid_chromosomes.iter().any(|k| k == &chr) {
+                continue;
+            }
+
             if interval_trees[&chr].contains(range){
                 let mut to_delete: Vec<Range> = Vec::new();
                 for (_i, stored) in interval_trees[&chr]
@@ -208,7 +217,7 @@ fn main() -> std::io::Result<()> {
 
     info!("\tDone.");
 
-    info!("Regions now looks like: {:?}", regions_by_chr);
+    debug!("Regions now looks like: {:?}", regions_by_chr);
 
     // Need to post-process the regions now
     //  1.  Center them to n bp long (600)
@@ -234,6 +243,7 @@ fn main() -> std::io::Result<()> {
     }
 
     info!("Correcting regions to the correct length.");
+    let mut pb = ProgressBar::new(22);
 
     let mut counter = Array::zeros((22,2));
 
@@ -259,6 +269,7 @@ fn main() -> std::io::Result<()> {
         }
         counter[[n-1, 0]] = n;
         counter[[n-1, 1]] = i;
+        pb.inc();
     }
     info!("\tDone.");
     debug!("{:?}", qc_regions_by_chr);
@@ -282,6 +293,9 @@ fn main() -> std::io::Result<()> {
         i.insert(label,  0);
 
     }
+    info!("One hot encoding sequences.");
+
+    let mut pb = ProgressBar::new(22);
 
     let fa = faidx::Reader::from_path(opt.fastq).unwrap();
     for n in 1..23 {
@@ -300,7 +314,7 @@ fn main() -> std::io::Result<()> {
 
             // One hot encode sequence and enter it into the array
             let seq = fa.fetch_seq_string(&chr_string, region.min as usize, (region.max -1) as usize).unwrap();
-            let mut out = one_hot_encode_seq(&seq, 600);
+            let out = one_hot_encode_seq(&seq, 600);
             seqs.get_mut(&dataset)
                 .unwrap()
                 .slice_mut(s![this_i, .., ..]).assign(&out);
@@ -314,9 +328,12 @@ fn main() -> std::io::Result<()> {
             *i.get_mut(&dataset).unwrap() += 1;
             
         }
+        pb.inc();
     }
 
     //let _e = hdf5::silence_errors();
+
+    info!("Writing to HDF5");
 
     {
         // Test the hdf5 writing
@@ -345,7 +362,11 @@ fn main() -> std::io::Result<()> {
 
 fn center_region(region: &memrange::Range, length: u64 ) -> Range {
     let midpoint = region.min + (region.min + region.max) / 2;
-    return Range::new(midpoint - length / 2, midpoint + length / 2);
+    if (length / 2) > midpoint {
+        return Range::new(0, length);
+    } else  {   
+        return Range::new(midpoint - length / 2, midpoint + length / 2);
+    }
 }
 
 fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 2]>> {
@@ -399,7 +420,7 @@ fn get_total(counter: &ndarray::ArrayBase<ndarray::OwnedRepr<usize>, ndarray::Di
     return sum as u64
 }
  
-fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, validation: &Vec::<usize>) -> &'static str {
+fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, _validation: &Vec::<usize>) -> &'static str {
     if training.iter().any(|&i| i == n)  {
         return "training";
     } else if test.iter().any(|&i| i == n) { 
