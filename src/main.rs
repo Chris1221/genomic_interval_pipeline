@@ -279,24 +279,38 @@ fn main() -> std::io::Result<()> {
 
     // Retrieve the sequence of the ranges. One hot encode them.
     
-    let mut seqs = HashMap::new();
-    let mut labels = HashMap::new();
+    let file = hdf5::File::create("test.h5").unwrap();
+    
+    //let mut seqs = HashMap::new();
+    //let mut labels = HashMap::new();
     let mut index = HashMap::new();
     let mut j = HashMap::new();
     let mut i = HashMap::new();
+    let mut seqs_db = HashMap::new();
+    let mut labels_db = HashMap::new();
      
     j.insert("training", get_total(&counter, &training));
     j.insert("test", get_total(&counter, &test));
     j.insert("validation", get_total(&counter, &validation));
 
     for label in ["training", "test", "validation"].iter() {
-        seqs.insert(label, Array::zeros(( j[label] as usize, 4 as usize, opt.length as usize)));
-        labels.insert(label,  Array::zeros(( number_of_labels as usize, j[label] as usize)));
+        //seqs.insert(label, Array::zeros(( j[label] as usize, 4 as usize, opt.length as usize)));
+        //labels.insert(label,  Array::zeros(( number_of_labels as usize, j[label] as usize)));
         index.insert(label, Vec::new());
-        i.insert(label,  0);
+        i.insert(label,  1);
+
+
+        seqs_db.insert(label, file.new_dataset::<u64>()
+                       .resizable(true)
+                       .create(&format!("{}_{}", label, "seqs"), (1, 4, 600) )
+                       .unwrap());
+        labels_db.insert(label, file.new_dataset::<u64>()
+                       .resizable(true)
+                       .create(&format!("{}_{}", label, "labels"), (number_of_labels as usize, 1) )
+                       .unwrap());
 
     }
-    info!("One hot encoding sequences.");
+    info!("One hot encoding sequences and writing to HDF5.");
 
     let mut pb = ProgressBar::new(22);
 
@@ -310,54 +324,49 @@ fn main() -> std::io::Result<()> {
         for (region, annotation) in qc_regions_by_chr[&chr_string].iter(){
             let region_string = format!("{}:{}-{}", &chr_string, region.min, region.max);
             let this_i: usize = *i.get(&dataset).unwrap();
+
+            // Get a reference to the writer function of the 
+            // database.
+            let writer = seqs_db.get(&dataset).unwrap().as_writer();
+            let label_writer = labels_db.get(&dataset).unwrap().as_writer();
+
+            // Expand the dimensionality of the database to ensure there's enoug
+            // room for the incoming data.
+            seqs_db
+                .get(&dataset)
+                .unwrap()
+                .resize((this_i as usize, 4, opt.length as usize));
+            labels_db
+                .get(&dataset)
+                .unwrap()
+                .resize((number_of_labels as usize, this_i as usize));        
             
             index.get_mut(&dataset)
                 .unwrap()
                 .push(region_string.clone());
 
-            // One hot encode sequence and enter it into the array
+            // Fetch sequence from fasta
             let seq = fa.fetch_seq_string(&chr_string, region.min as usize, (region.max -1) as usize).unwrap();
+            // One hot encode
             let out = one_hot_encode_seq(&seq, 600);
-            seqs.get_mut(&dataset)
-                .unwrap()
-                .slice_mut(s![this_i, .., ..]).assign(&out);
+            // One hot encode label vector 
+            let label = one_hot_encode_labels(annotation, number_of_labels);
+           
+            // Write to resized dataset 
+            writer.write_slice(&out, s![this_i-1, .., ..]);
+            label_writer.write_slice(&label, s![.., this_i-1]);
+
             
             // One hot encode the labels and enter them into the array
-            let label = one_hot_encode_labels(annotation, number_of_labels);
-            labels.get_mut(&dataset)
-                .unwrap()
-                .slice_mut(s![.., this_i]).assign(&label);
+            //labels.get_mut(&dataset)
+             //   .unwrap()
+              //  .slice_mut(s![.., this_i]).assign(&label);
 
             *i.get_mut(&dataset).unwrap() += 1;
             
         }
         pb.inc();
     }
-
-    //let _e = hdf5::silence_errors();
-
-    info!("Writing to HDF5");
-
-    {
-        // Test the hdf5 writing
-        let file = hdf5::File::create("test.h5").unwrap();
-        let training_seqs = file.new_dataset::<u64>().create("training_seqs", seqs[&"training"].dim()).unwrap();
-        let test_seqs = file.new_dataset::<u64>().create("test_seqs", seqs[&"test"].dim()).unwrap();
-        let validation_seqs = file.new_dataset::<u64>().create("validation_seqs", seqs[&"validation"].dim()).unwrap();
-        let training_labels = file.new_dataset::<u64>().create("training_labels", labels[&"training"].dim()).unwrap();
-        let test_labels = file.new_dataset::<u64>().create("test_labels", labels[&"test"].dim()).unwrap();
-        let validation_labels = file.new_dataset::<u64>().create("validation_labels", labels[&"validation"].dim()).unwrap();
-
-        training_seqs.write(seqs[&"training"].view()).unwrap();
-        test_seqs.write(seqs[&"test"].view()).unwrap();
-        validation_seqs.write(seqs[&"validation"].view()).unwrap();
-        
-        training_labels.write(labels[&"training"].view()).unwrap();
-        test_labels.write(labels[&"test"].view()).unwrap();
-        validation_labels.write(labels[&"validation"].view()).unwrap();
- 
-    }
-
 
     Ok(())
 }
