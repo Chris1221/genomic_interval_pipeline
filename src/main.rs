@@ -2,15 +2,44 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::BufRead;
-use log::{info, debug};
+use log::{info, debug, warn};
 use std::cmp;
 use env_logger::Env;
 use std::vec::Vec;
+use ndarray::prelude::*;
+use std::path::PathBuf;
+use structopt::StructOpt;
+use rust_htslib::faidx;
 
+extern crate ndarray;
 extern crate theban_interval_tree;
+extern crate structopt;
+extern crate hdf5;
+
 
 use memrange::Range;
 
+/// Genomic interval preprocessing for keras.
+#[derive(StructOpt, Debug, Clone)]
+#[structopt(name = "scJaccard")]
+struct Opt {
+
+    /// Newline seperated list of bed files to process.
+    #[structopt(short, long, default_value = "data/metadata.txt")]
+    input: PathBuf,
+
+    /// Reference sequence 
+    #[structopt(short, long, parse(from_os_str), default_value = "data/blah.fq")]
+    fastq: PathBuf,
+   
+    /// Size of the regions to report.
+    #[structopt(long, default_value = "600")]
+    length: u64,
+
+    /// Log level. Defaults to Info (useful information and statistics). 
+    #[structopt(long, default_value = "info")]
+    loglevel: String,
+}
 
 fn main() -> std::io::Result<()> {
     // 1. Read in the meta data file. 
@@ -18,22 +47,34 @@ fn main() -> std::io::Result<()> {
     //      This file is simple a one file per line description of all
     //      bed files that are to be included in the database. Create a hash map of
     //      the file names, with each given a numeric index.
+    //
+    let opt = Opt::from_args();
     
     let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "info")
+        .filter_or("MY_LOG_LEVEL", opt.loglevel)
         .write_style_or("MY_LOG_STYLE", "always");
     env_logger::init_from_env(env);
+
+    // Set up labels
+    let mut training = Vec::new();
+    for i in 1..19 { training.push(i) }
+    let mut test = Vec::new();
+    for i in 19..21 { test.push(i) } 
+    let mut validation = Vec::new();
+    for i in 21..23 { validation.push(i) }
 
     // Hashmap to hold the bed indices
     let mut metadata = HashMap::new();
 
+    
     // Read in the file paths to the bed files.
     info!("Reading metadata file.");
+
+    let mut i = 1;
     {
-        let metadata_file = File::open("data/metadata.txt")?;
+        let metadata_file = File::open(opt.input)?;
         let metadata_file_reader = BufReader::new(metadata_file);
         
-        let mut i = 1;
         for line in metadata_file_reader.lines(){
             //debug!("Adding a bed file named {}", line.unwrap());
             let line_string = line.unwrap();
@@ -43,6 +84,8 @@ fn main() -> std::io::Result<()> {
             debug!("{}", i);
         }
     }
+
+    let number_of_labels = i-1;
 
     // 2. Read in the files and create an interval tree, per chromosome. 
     //
@@ -70,7 +113,7 @@ fn main() -> std::io::Result<()> {
 
     // Make an entry for all the predefined chromsomes. We don't
     // want all of the alternate assemblies.
-    for n in 1..22 {
+    for n in 1..23 {
         let idx = format!("{}{}", "chr", n);
         interval_trees.insert(idx.clone(), theban_interval_tree::IntervalTree::<i32>::new());
         let regions: HashMap<Range, Vec<u64>> = HashMap::new();
@@ -81,6 +124,7 @@ fn main() -> std::io::Result<()> {
 
 
     for (bed_file, bed_idx) in metadata {
+        info!("\tAdding regions from {}...", bed_file);
         let bed = File::open(bed_file)?;
         let bed_reader = BufReader::new(bed);
 
@@ -98,35 +142,48 @@ fn main() -> std::io::Result<()> {
                                             .range(range.min, range.max)
                                                 .enumerate(){
                     debug!("Region intersection, resolving...");
-                    // Get the current value for that region
-                    let mut v = regions_by_chr
-                        .get_mut(&chr)
-                        .unwrap()
-                        .get_mut(&stored.0)
-                        .unwrap()
-                        .clone();
-                    regions_by_chr
-                        .get_mut(&chr)
-                        .unwrap()
-                        .remove(&stored.0);
-                    
-                    // Create a new region based on both
-                    let new = Range::new(
-                        cmp::min(range.min, stored.0.min), 
-                        cmp::max(range.max, stored.0.max));
+                    if (range.min == stored.0.min) & (range.max == stored.0.max) {
+                        // If the range is the same, then just 
+                        // add the index.
+                        regions_by_chr
+                            .get_mut(&chr)
+                            .unwrap()
+                            .get_mut(&stored.0)
+                            .unwrap()
+                            .push(bed_idx);
+                    } else {
+                        // If not, then resolve the intersection.
+                        //
+                        // Get the current value for that region
+                        let mut v = regions_by_chr
+                            .get_mut(&chr)
+                            .unwrap()
+                            .get_mut(&stored.0)
+                            .unwrap()
+                            .clone();
+                        regions_by_chr
+                            .get_mut(&chr)
+                            .unwrap()
+                            .remove(&stored.0);
+                        
+                        // Create a new region based on both
+                        let new = Range::new(
+                            cmp::min(range.min, stored.0.min), 
+                            cmp::max(range.max, stored.0.max));
 
-                    debug!("\tCreated a new region {:?}", new);
+                        debug!("\tCreated a new region {:?}", new);
 
-                    // Add back in the new vector of bed files
-                    // for the range.
-                    v.push(bed_idx);
-                    regions_by_chr
-                        .get_mut(&chr)
-                        .unwrap()
-                        .insert(new, v.to_vec());
+                        // Add back in the new vector of bed files
+                        // for the range.
+                        v.push(bed_idx);
+                        regions_by_chr
+                            .get_mut(&chr)
+                            .unwrap()
+                            .insert(new, v.to_vec());
 
-                    // Add this to the list of regions to be deleted
-                    to_delete.push(stored.0) 
+                        // Add this to the list of regions to be deleted
+                        to_delete.push(stored.0) 
+                    }
                 }
                 for del in to_delete.iter(){
                     interval_trees.get_mut(&chr).unwrap().delete(*del);
@@ -149,7 +206,9 @@ fn main() -> std::io::Result<()> {
 
     }
 
-    println!("{:?}", regions_by_chr);
+    info!("\tDone.");
+
+    info!("Regions now looks like: {:?}", regions_by_chr);
 
     // Need to post-process the regions now
     //  1.  Center them to n bp long (600)
@@ -163,29 +222,189 @@ fn main() -> std::io::Result<()> {
     //  Alternatievly could create a second set.
     //
     let mut qc_interval_trees = HashMap::new();
+    let mut qc_regions_by_chr = HashMap::new();
 
-    for n in 1..22 {
+    for n in 1..23 {
         let idx = format!("{}{}", "chr", n);
         qc_interval_trees.insert(
             idx.clone(), 
             theban_interval_tree::IntervalTree::<i32>::new());
+        let regions: HashMap<Range, Vec<u64>> = HashMap::new();
+        qc_regions_by_chr.insert(idx.clone(), regions);
+    }
+
+    info!("Correcting regions to the correct length.");
+
+    let mut counter = Array::zeros((22,2));
+
+    for n in 1..23 {
+        let mut i = 0;
+        let idx = format!("{}{}", "chr", n);
+        for (_i, stored) in interval_trees.get_mut(&idx.clone()).unwrap().iter().enumerate() {
+            let corrected_range = center_region(&stored.0, opt.length);
+            debug!("Corrected region {:?} to {:?}.", stored.0, corrected_range);
+            // Adding range
+            qc_interval_trees
+                .get_mut(&idx.clone())
+                .unwrap()
+                .insert(corrected_range, 1);
+            // Adding annotation
+            qc_regions_by_chr
+                .get_mut(&idx.clone())
+                .unwrap()
+                .insert(
+                    corrected_range, 
+                    regions_by_chr[&idx.clone()][&stored.0].clone());
+            i += 1;
+        }
+        counter[[n-1, 0]] = n;
+        counter[[n-1, 1]] = i;
+    }
+    info!("\tDone.");
+    debug!("{:?}", qc_regions_by_chr);
+
+    // Retrieve the sequence of the ranges. One hot encode them.
+    
+    let mut seqs = HashMap::new();
+    let mut labels = HashMap::new();
+    let mut index = HashMap::new();
+    let mut j = HashMap::new();
+    let mut i = HashMap::new();
+     
+    j.insert("training", get_total(&counter, &training));
+    j.insert("test", get_total(&counter, &test));
+    j.insert("validation", get_total(&counter, &validation));
+
+    for label in ["training", "test", "validation"].iter() {
+        seqs.insert(label, Array::zeros(( j[label] as usize, 4 as usize, opt.length as usize)));
+        labels.insert(label,  Array::zeros(( number_of_labels as usize, j[label] as usize)));
+        index.insert(label, Vec::new());
+        i.insert(label,  0);
+
+    }
+
+    let fa = faidx::Reader::from_path(opt.fastq).unwrap();
+    for n in 1..23 {
+
+        let dataset: &str = which_dataset(n, &training, &test, &validation);
+
+        let chr_string = format!("{}{}", "chr", n);
+
+        for (region, annotation) in qc_regions_by_chr[&chr_string].iter(){
+            let region_string = format!("{}:{}-{}", &chr_string, region.min, region.max);
+            let this_i: usize = *i.get(&dataset).unwrap();
+            
+            index.get_mut(&dataset)
+                .unwrap()
+                .push(region_string.clone());
+
+            // One hot encode sequence and enter it into the array
+            let seq = fa.fetch_seq_string(&chr_string, region.min as usize, (region.max -1) as usize).unwrap();
+            let mut out = one_hot_encode_seq(&seq, 600);
+            seqs.get_mut(&dataset)
+                .unwrap()
+                .slice_mut(s![this_i, .., ..]).assign(&out);
+            
+            // One hot encode the labels and enter them into the array
+            let label = one_hot_encode_labels(annotation, number_of_labels);
+            labels.get_mut(&dataset)
+                .unwrap()
+                .slice_mut(s![.., this_i]).assign(&label);
+
+            *i.get_mut(&dataset).unwrap() += 1;
+            
+        }
+    }
+
+    //let _e = hdf5::silence_errors();
+
+    {
+        // Test the hdf5 writing
+        let file = hdf5::File::create("test.h5").unwrap();
+        let training_seqs = file.new_dataset::<u64>().create("training_seqs", seqs[&"training"].dim()).unwrap();
+        let test_seqs = file.new_dataset::<u64>().create("test_seqs", seqs[&"test"].dim()).unwrap();
+        let validation_seqs = file.new_dataset::<u64>().create("validation_seqs", seqs[&"validation"].dim()).unwrap();
+        let training_labels = file.new_dataset::<u64>().create("training_labels", labels[&"training"].dim()).unwrap();
+        let test_labels = file.new_dataset::<u64>().create("test_labels", labels[&"test"].dim()).unwrap();
+        let validation_labels = file.new_dataset::<u64>().create("validation_labels", labels[&"validation"].dim()).unwrap();
+
+        training_seqs.write(seqs[&"training"].view()).unwrap();
+        test_seqs.write(seqs[&"test"].view()).unwrap();
+        validation_seqs.write(seqs[&"validation"].view()).unwrap();
+        
+        training_labels.write(labels[&"training"].view()).unwrap();
+        test_labels.write(labels[&"test"].view()).unwrap();
+        validation_labels.write(labels[&"validation"].view()).unwrap();
+ 
     }
 
 
-    // Let's just make it easy for ourselves and split by chromosome.
-    // Reserve two for test, two for validation.
-    
-
-
-    // Later I can deal with the rest, which should be easy.
-    //      1. Splitting into training, testing, and validation.
-    //      2. Retrieving the sequence from a fastq file 
-    //      3. Writing to h5py
-    //
     Ok(())
 }
 
 
-fn center_region(region: Range, length: u64 ) -> Range {
-    midpoint = region.min + (region.min + region.max) / 2;
+fn center_region(region: &memrange::Range, length: u64 ) -> Range {
+    let midpoint = region.min + (region.min + region.max) / 2;
+    return Range::new(midpoint - length / 2, midpoint + length / 2);
+}
+
+fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 2]>> {
+    let mut out = Array::zeros((4, length as usize));
+    for (i, c) in seq.chars().enumerate(){
+        let mut code = 10;
+        if (c == 'a') || (c == 'A'){
+            code = 0;
+        } else if (c == 'c') || (c == 'C'){
+            code = 1;
+        } else if (c == 't') || (c == 'T'){
+            code = 2;
+        } else if (c == 'g') || (c == 'G'){
+            code = 3;
+        } else if (c == 'n') || (c == 'N'){
+            code = 4
+        } else {
+            warn!("Bad base encountered. Skipping.")
+        }
+
+        if code <= 3 {
+            out[[code, i]] = 1
+        }
+    }
+    return out;
+}
+
+fn one_hot_encode_labels(labels: &Vec::<u64>, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 1]>> {
+    let mut out = Array::zeros(length as usize);
+    for l in labels.iter(){
+        out[[(l-1) as usize]] = 1;
+    }
+    return out
+}
+
+fn which_true(array:ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>>   ) -> Vec::<usize> {
+    let mut out = Vec::new();
+    for (i, elem) in array.iter().enumerate(){
+        if *elem { out.push(i) } 
+    }
+    return out;
+}
+
+
+fn get_total(counter: &ndarray::ArrayBase<ndarray::OwnedRepr<usize>, ndarray::Dim<[usize; 2]>>, elements: &Vec::<usize>) -> u64 {
+    let mut sum = 0;
+    let index = which_true(counter.slice(s![.., 0]).mapv(|i| elements.iter().any(|&j| j == i)));
+    for idx in index.iter() {
+        sum += counter[[*idx, 1]] 
+    }
+    return sum as u64
+}
+ 
+fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, validation: &Vec::<usize>) -> &'static str {
+    if training.iter().any(|&i| i == n)  {
+        return "training";
+    } else if test.iter().any(|&i| i == n) { 
+        return "test";
+    } else { 
+        return "validation";
+    }
 }
