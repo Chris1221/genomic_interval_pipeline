@@ -41,12 +41,11 @@ struct Opt {
 
     /// Test chromosomes, seperated by commas.
     #[structopt(long, default_value = "chr19,chr20")]
-    test_chr: String
+    test_chr: String,
     
     /// Validation chromosomes, seperated by commas.
     #[structopt(long, default_value = "chr21,chr22")]
-    test_chr: String
-
+    valid_chr: String,
 
     /// Log level. Defaults to Info (useful information and statistics). 
     #[structopt(long, default_value = "info")]
