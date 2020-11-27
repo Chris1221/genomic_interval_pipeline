@@ -34,6 +34,10 @@ struct Opt {
     /// Reference sequence 
     #[structopt(short, long, parse(from_os_str), default_value = "data/blah.fq")]
     fastq: PathBuf,
+
+    /// Output filename
+    #[structopt(short, long, parse(from_os_str), default_value = "dataset.h5")]
+    output: PathBuf,
    
     /// Size of the regions to report.
     #[structopt(long, default_value = "600")]
@@ -287,7 +291,7 @@ fn main() -> std::io::Result<()> {
 
     // Retrieve the sequence of the ranges. One hot encode them.
     
-    let file = hdf5::File::create("test.h5").unwrap();
+    let file = hdf5::File::create(opt.output).unwrap();
     
     //let mut seqs = HashMap::new();
     //let mut labels = HashMap::new();
