@@ -1,2 +1,2 @@
-data/file1.bed
-data/file2.bed
+data/file1.bed.gz
+data/file2.bed.gz

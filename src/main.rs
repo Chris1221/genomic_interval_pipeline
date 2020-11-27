@@ -39,6 +39,15 @@ struct Opt {
     #[structopt(long, default_value = "600")]
     length: u64,
 
+    /// Test chromosomes, seperated by commas.
+    #[structopt(long, default_value = "chr19,chr20")]
+    test_chr: String
+    
+    /// Validation chromosomes, seperated by commas.
+    #[structopt(long, default_value = "chr21,chr22")]
+    test_chr: String
+
+
     /// Log level. Defaults to Info (useful information and statistics). 
     #[structopt(long, default_value = "info")]
     loglevel: String,
@@ -302,11 +311,11 @@ fn main() -> std::io::Result<()> {
 
         seqs_db.insert(label, file.new_dataset::<u64>()
                        .resizable(true)
-                       .create(&format!("{}_{}", label, "seqs"), (1, 4, 600) )
+                       .create(&format!("{}_{}", label, "seqs"), (1, 600, 4) )
                        .unwrap());
         labels_db.insert(label, file.new_dataset::<u64>()
                        .resizable(true)
-                       .create(&format!("{}_{}", label, "labels"), (number_of_labels as usize, 1) )
+                       .create(&format!("{}_{}", label, "labels"), (1, number_of_labels as usize) )
                        .unwrap());
 
     }
@@ -335,11 +344,11 @@ fn main() -> std::io::Result<()> {
             seqs_db
                 .get(&dataset)
                 .unwrap()
-                .resize((this_i as usize, 4, opt.length as usize));
+                .resize((this_i as usize, opt.length as usize, 4));
             labels_db
                 .get(&dataset)
                 .unwrap()
-                .resize((number_of_labels as usize, this_i as usize));        
+                .resize((this_i as usize, number_of_labels as usize));
             
             index.get_mut(&dataset)
                 .unwrap()
@@ -354,7 +363,7 @@ fn main() -> std::io::Result<()> {
            
             // Write to resized dataset 
             writer.write_slice(&out, s![this_i-1, .., ..]);
-            label_writer.write_slice(&label, s![.., this_i-1]);
+            label_writer.write_slice(&label, s![this_i-1, ..]);
 
             
             // One hot encode the labels and enter them into the array
@@ -382,7 +391,7 @@ fn center_region(region: &memrange::Range, length: u64 ) -> Range {
 }
 
 fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 2]>> {
-    let mut out = Array::zeros((4, length as usize));
+    let mut out = Array::zeros((length as usize, 4));
     for (i, c) in seq.chars().enumerate(){
         let mut code = 10;
         if (c == 'a') || (c == 'A'){
@@ -400,7 +409,7 @@ fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::
         }
 
         if code <= 3 {
-            out[[code, i]] = 1
+            out[[i, code]] = 1
         }
     }
     return out;
