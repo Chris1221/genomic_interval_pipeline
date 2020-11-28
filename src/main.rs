@@ -46,6 +46,19 @@
 //!
 //!This will create your dataset at `small_dataset.h5`.
 //!
+//! ### Arguments
+//!
+//!
+//!| Short | Long | Value | Description | 
+//!| :-:   | :-:  | :-: | :-- |
+//!| `-i` | `--input` | String | Path to a newline seperated list of bed files to process. | 
+//!| `-f` | `--fastq` | String | Path to faidx indexed, `bgzip` compressed reference FASTQ file |
+//!| `-o` | `--output` | String | Path to the output `.h5` file. |
+//!|     |  `--length` | Number | Standardised length of regions (default: `600`) |
+//!|     | `--test_chr` | String| Comma seperated list of chromosomes to use in the test set (default: `chr19,chr20`) | 
+//!|     | `--valid_chr` | String| Comma seperated list of chromosomes to use in the validation set (default: `chr21,chr22`) | 
+//!|     | `--loglevel` | String | Level of logging (default: `info`) | 
+//!
 //!## Dataset Format
 //!
 //!HDF5 files are essentially directories of data. There are six tables within the dataset corresponding to the training, test, and validation sequences and their labels. 
@@ -131,8 +144,7 @@ struct Opt {
     loglevel: String,
 }
 
-/// Bblah
-
+/// Main function.
 fn main() -> std::io::Result<()> {
     // 1. Read in the meta data file. 
     //
@@ -577,6 +589,7 @@ fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, _valida
     }
 }
 
+/// Parses command line options for test and validation chromosomes.
 fn to_numeric_vector(input: String) -> Vec::<usize> {
     let split = input.split(",").collect::<Vec<&str>>();
     let mut out = Vec::new();
