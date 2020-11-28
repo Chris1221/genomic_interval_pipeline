@@ -7,8 +7,8 @@ This is a pipeline for creating [HDF5](https://www.hdfgroup.org/solutions/hdf5) 
 Ensure that you have installed [`cargo` and Rust](https://doc.rust-lang.org/cargo/getting-started/installation.html) on your system, then clone this repository. 
 
 ```sh
-git clone git@github.com:Chris1221/make_training_data.rs.git
-cd make_training_data.rs
+git clone git@github.com:Chris1221/genomic_interval_pipeline.rs.git
+cd genomic_interval_pipeline.rs
 ```
 
 Use `cargo` to build the executable. It should figure out all the dependencies for you.
@@ -17,7 +17,7 @@ Use `cargo` to build the executable. It should figure out all the dependencies f
 cargo build --release
 ```
 
-The binary will be in `target/release/make_training_data`.
+The binary will be in `target/release/genomic_interval_pipeline`.
 
 ## Usage
 
@@ -59,7 +59,7 @@ samtools faidx hg19.fa.gz
 Invoke the binary with the paths to the metadata of BED files and the reference genome (you don't have to specify where the index is). 
 
 ```
-make_training_data -i data/metadata.txt -f hg19.fa.gz -o small_dataset
+genomic_interval_pipeline -i data/metadata.txt -f hg19.fa.gz -o small_dataset
 ```
 
 This will create your dataset at `small_dataset.h5`.

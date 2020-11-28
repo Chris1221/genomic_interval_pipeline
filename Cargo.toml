@@ -1,8 +1,15 @@
 [package]
-name = "make_training_data"
+name = "genomic_interval_pipeline"
 version = "0.1.0"
 authors = ["Christopher Cole <ccole@well.ox.ac.uk>"]
+description =  "A pipeline for creating HDF5 databases from genomic intervals."
+homepage = "https://github.com/Chris1221/genomic_interval_pipeline"
+repository = "https://github.com/Chris1221/genomic_interval_pipeline"
+license = "MIT"
 edition = "2018"
+keywords = ["genetics", "genomics", "deep learning", "HDF5", "keras", "intervals"]
+categories = ["command-line-utilities", "database", "science", ]
+readme = "README.md"
 
 [dependencies]
 structopt = "0.3.14"

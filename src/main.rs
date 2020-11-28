@@ -41,7 +41,7 @@
 //!Invoke the binary with the paths to the metadata of BED files and the reference genome (you don't have to specify where the index is). 
 //!
 //!```
-//!make_training_data -i data/metadata.txt -f hg19.fa.gz -o small_dataset
+//!genomic_interval_pipeline -i data/metadata.txt -f hg19.fa.gz -o small_dataset
 //!```
 //!
 //!This will create your dataset at `small_dataset.h5`.
@@ -112,7 +112,7 @@ use memrange::Range;
 
 /// Genomic interval preprocessing for keras.
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(name = "make_training_data")]
+#[structopt(name = "genomic_interval_pipeline")]
 struct Opt {
 
     /// Newline seperated list of bed files to process.
