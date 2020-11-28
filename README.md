@@ -68,9 +68,9 @@ This will create your dataset at `small_dataset.h5`.
 
 HDF5 files are essentially directories of data. There are six tables within the dataset corresponding to the training, test, and validation sequences and their labels. 
 
-Sequences are 3D arrays with dimenions `(batch, 4, length)` where length is optionally specified when building th dataset and refers to the standardized length of the segments. 
+Sequences are 3D arrays with dimenions `(batch, length, 4)` where length is optionally specified when building th dataset and refers to the standardized length of the segments. 
 
-Labels are 2D arrays with dimensions `(number_of_labels, batch)` where number of labels is the length of the metadata file. You can easily recode this dataset inside the `HDF5` file for more bespoke training outputs.
+Labels are 2D arrays with dimensions `(batch, number_of_labels)` where number of labels is the length of the metadata file. You can easily recode this dataset inside the `HDF5` file for more bespoke training outputs.
 
 ## Using the dataset in `Keras`
 

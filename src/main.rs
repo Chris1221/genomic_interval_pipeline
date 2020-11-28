@@ -1,3 +1,77 @@
+//! # A Pipeline for Building Genomic Annotation Datasets for Deep Learning
+//! This is a pipeline for creating [HDF5](https://www.hdfgroup.org/solutions/hdf5) input to [Keras](https://keras.io/) from genomic regions and annotations in [Rust](https://www.rust-lang.org). It is a (somewhat) drop-in replacement for [Basset's preprocessing pipeline](https://github.com/davek44/Basset/blob/master/docs/preprocess.md), intended to transform a list of BED files into annotated one-hot encoded sequences for use in a deep learning model. The input and output of both pipelines should be similar, with this one being *substantially* faster for larger datasets.
+//!
+//!## Usage
+//!
+//!You must provide:
+//!
+//!1. A newline seperated list of gzipped BED files.
+//!2. Path to the reference genome. This must be compressed with `bgzip` and indexed by `samtools faidx`. 
+//!
+//!An example of the first can be found in `data/metadata.txt`:
+//!
+//!```
+//!data/file1.bed.gz
+//!data/file2.bed.gz
+//!```
+//!
+//!To create the relevant reference genome is straightforward. 
+//!
+//!1. Download your reference genome of choice, for example hg19. Here, I just used the UCSC genome browser. 
+//!
+//!```sh
+//!wget https://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
+//!```
+//!
+//!2. Compress your reference genome with `bgzip` (if this is already true, skip this step.)
+//!
+//!```sh
+//!gunzip hg19.fa.gz
+//!bgzip hg19.fa
+//!```
+//!
+//!3. Index with `samtools`.
+//!
+//!```sh
+//!samtools faidx hg19.fa.gz
+//!```
+//!
+//!### Running the pipeline
+//!
+//!Invoke the binary with the paths to the metadata of BED files and the reference genome (you don't have to specify where the index is). 
+//!
+//!```
+//!make_training_data -i data/metadata.txt -f hg19.fa.gz -o small_dataset
+//!```
+//!
+//!This will create your dataset at `small_dataset.h5`.
+//!
+//!## Dataset Format
+//!
+//!HDF5 files are essentially directories of data. There are six tables within the dataset corresponding to the training, test, and validation sequences and their labels. 
+//!
+//!Sequences are 3D arrays with dimenions `(batch, length, 4)` where length is optionally specified when building th dataset and refers to the standardized length of the segments. 
+//!
+//!Labels are 2D arrays with dimensions `(batch, number_of_labels)` where number of labels is the length of the metadata file. You can easily recode this dataset inside the `HDF5` file for more bespoke training outputs.
+//!
+//!## Using the dataset in `Keras`
+//!
+//!You can use this data in your own neural network with the [TensorFlow I/O](https://www.tensorflow.org/io) API. Here is an example in Python.
+//!
+//!```py
+//!import tensorflow     as tf
+//!import tensorflow_io  as tfio
+//!
+//!dataset = "small_dataset.h5"
+//!
+//!train_x = tfio.Dataset.from_hdf5(dataset, "training_sequences")
+//!train_y = tfio.Dataset.from_hdf5(dataset, "training_labels")
+//!train_dataset = tf.data.Dataset.zip((train_x, train_y))
+//!```
+//!
+//!Pass this `train_dataset` (and similarly test and validation) to `model.fit`. 
+
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
@@ -20,11 +94,12 @@ extern crate flate2;
 extern crate hdf5;
 
 
+
 use memrange::Range;
 
 /// Genomic interval preprocessing for keras.
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(name = "scJaccard")]
+#[structopt(name = "make_training_data")]
 struct Opt {
 
     /// Newline seperated list of bed files to process.
@@ -56,6 +131,8 @@ struct Opt {
     loglevel: String,
 }
 
+/// Bblah
+
 fn main() -> std::io::Result<()> {
     // 1. Read in the meta data file. 
     //
@@ -70,21 +147,28 @@ fn main() -> std::io::Result<()> {
         .write_style_or("MY_LOG_STYLE", "always");
     env_logger::init_from_env(env);
 
-    // Set up labels
+    let test = to_numeric_vector(opt.test_chr);
+    let validation = to_numeric_vector(opt.valid_chr);
+    
     let mut training = Vec::new();
-    for i in 1..19 { training.push(i) }
-    let mut test = Vec::new();
-    for i in 19..21 { test.push(i) } 
-    let mut validation = Vec::new();
-    for i in 21..23 { validation.push(i) }
+    for i in 1..23 { 
+        if !test.contains(&i) {
+            if !validation.contains(&i) {
+                training.push(i) 
+            }
+        }
+    }
+
+    info!(target: "Input", "Test: {:?}", test);
+    info!("Validation: {:?}", validation);
+    info!("Training: {:?}", training); 
 
     let mut valid_chromosomes = Vec::new();
     for i in 1..23 { valid_chromosomes.push(format!("{}{}", "chr", i)) }
 
     // Hashmap to hold the bed indices
     let mut metadata = HashMap::new();
-
-    
+ 
     // Read in the file paths to the bed files.
     info!("Reading metadata file.");
 
@@ -347,11 +431,13 @@ fn main() -> std::io::Result<()> {
             seqs_db
                 .get(&dataset)
                 .unwrap()
-                .resize((this_i as usize, opt.length as usize, 4));
+                .resize((this_i as usize, opt.length as usize, 4))
+                .unwrap();
             labels_db
                 .get(&dataset)
                 .unwrap()
-                .resize((this_i as usize, number_of_labels as usize));
+                .resize((this_i as usize, number_of_labels as usize))
+                .unwrap();
             
             index.get_mut(&dataset)
                 .unwrap()
@@ -365,8 +451,8 @@ fn main() -> std::io::Result<()> {
             let label = one_hot_encode_labels(annotation, number_of_labels);
            
             // Write to resized dataset 
-            writer.write_slice(&out, s![this_i-1, .., ..]);
-            label_writer.write_slice(&label, s![this_i-1, ..]);
+            writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
+            label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
 
             
             // One hot encode the labels and enter them into the array
@@ -384,6 +470,19 @@ fn main() -> std::io::Result<()> {
 }
 
 
+/// Standardises regions to a certain length.
+///
+/// If the regions are less than the input length (given as a parameter),
+/// half of the length is added to each end of the center of the region. 
+///
+/// Example:
+///
+/// ```
+/// let region = memrange::Region(5000,6000);
+/// let centered: memrange::Region = center_region(region, 600);
+/// ```
+///
+/// The resulting region will be inserted into the interval tree.
 fn center_region(region: &memrange::Range, length: u64 ) -> Range {
     let midpoint = region.min + (region.min + region.max) / 2;
     if (length / 2) > midpoint {
@@ -393,6 +492,19 @@ fn center_region(region: &memrange::Range, length: u64 ) -> Range {
     }
 }
 
+
+/// One hot encode a DNA sequence.
+///
+/// Takes a string of ACTG (any case) as input and returns an (length, 4) array. N (unknown
+/// nucleotide) will be treated as 0s across all four categories while any other character
+/// will throw an error.
+///
+/// Example:
+///
+/// ```
+/// let encoding = one_hot_encode_seq(seq = 'ACTGN', length = 5);
+/// println!("{:?}", encoding);
+/// ```
 fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 2]>> {
     let mut out = Array::zeros((length as usize, 4));
     for (i, c) in seq.chars().enumerate(){
@@ -418,6 +530,13 @@ fn one_hot_encode_seq(seq: &String, length: u64) -> ndarray::ArrayBase<ndarray::
     return out;
 }
 
+/// One hot encode a label vector
+///
+/// Takes a vector of labels and the total number of labels and creates a one hot encoding.
+///
+/// ```
+/// one_hot_encode_labels(vec![1,2,3], 3);
+/// ```
 fn one_hot_encode_labels(labels: &Vec::<u64>, length: u64) -> ndarray::ArrayBase<ndarray::OwnedRepr<u64>, ndarray::Dim<[usize; 1]>> {
     let mut out = Array::zeros(length as usize);
     for l in labels.iter(){
@@ -425,6 +544,8 @@ fn one_hot_encode_labels(labels: &Vec::<u64>, length: u64) -> ndarray::ArrayBase
     }
     return out
 }
+
+/// Returns which elements of a vector are true (for indexing).
 
 fn which_true(array:ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[usize; 1]>>   ) -> Vec::<usize> {
     let mut out = Vec::new();
@@ -434,7 +555,7 @@ fn which_true(array:ndarray::ArrayBase<ndarray::OwnedRepr<bool>, ndarray::Dim<[u
     return out;
 }
 
-
+/// Returns the sum of specific entries in a 2D array.
 fn get_total(counter: &ndarray::ArrayBase<ndarray::OwnedRepr<usize>, ndarray::Dim<[usize; 2]>>, elements: &Vec::<usize>) -> u64 {
     let mut sum = 0;
     let index = which_true(counter.slice(s![.., 0]).mapv(|i| elements.iter().any(|&j| j == i)));
@@ -443,7 +564,9 @@ fn get_total(counter: &ndarray::ArrayBase<ndarray::OwnedRepr<usize>, ndarray::Di
     }
     return sum as u64
 }
- 
+
+/// Takes a chromosome and returns whether it is currently in the training, test, or validation
+/// dataset.
 fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, _validation: &Vec::<usize>) -> &'static str {
     if training.iter().any(|&i| i == n)  {
         return "training";
@@ -452,4 +575,13 @@ fn which_dataset(n: usize, training: &Vec::<usize>, test: &Vec::<usize>, _valida
     } else { 
         return "validation";
     }
+}
+
+fn to_numeric_vector(input: String) -> Vec::<usize> {
+    let split = input.split(",").collect::<Vec<&str>>();
+    let mut out = Vec::new();
+    for i in &split {
+        out.push(i[3..].parse::<usize>().unwrap());
+    }
+    return out;
 }
