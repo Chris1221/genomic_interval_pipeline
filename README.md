@@ -1,6 +1,7 @@
 ### A Pipeline for Building Genomic Annotation Datasets for Deep Learning
 
-[![Crates.io](https://img.shields.io/crates/v/genomic_interval_pipeline?style=for-the-badge)](https://crates.io/crates/genomic_interval_pipeline)
+[![Crates.io](https://img.shields.io/crates/v/genomic_interval_pipeline)](https://crates.io/crates/genomic_interval_pipeline)
+[![Docs](https://docs.rs/genomic_interval_pipeline/badge.svg?version=0.1.0)](https://docs.rs/crate/genomic_interval_pipeline)
 
 This is a pipeline for creating [HDF5](https://www.hdfgroup.org/solutions/hdf5) input to [Keras](https://keras.io/) from genomic regions and annotations in [Rust](https://www.rust-lang.org). It is a (somewhat) drop-in replacement for [Basset's preprocessing pipeline](https://github.com/davek44/Basset/blob/master/docs/preprocess.md), intended to transform a list of BED files into annotated one-hot encoded sequences for use in a deep learning model. The input and output of both pipelines should be similar, with this one being *substantially* faster for larger datasets.
 
