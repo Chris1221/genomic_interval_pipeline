@@ -5,6 +5,12 @@
 
 This is a pipeline for creating [HDF5](https://www.hdfgroup.org/solutions/hdf5) input to [Keras](https://keras.io/) from genomic regions and annotations in [Rust](https://www.rust-lang.org). It is a (somewhat) drop-in replacement for [Basset's preprocessing pipeline](https://github.com/davek44/Basset/blob/master/docs/preprocess.md), intended to transform a list of BED files into annotated one-hot encoded sequences for use in a deep learning model. The input and output of both pipelines should be similar, with this one being *substantially* faster for larger datasets.
 
+To install, use `cargo` or alternatively build from source.
+
+```sh
+cargo install genomic_interval_pipeline
+```
+
 ## Building from source
 
 Ensure that you have installed [`cargo` and Rust](https://doc.rust-lang.org/cargo/getting-started/installation.html) on your system, then clone this repository. 
