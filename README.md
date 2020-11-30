@@ -85,6 +85,17 @@ Sequences are 3D arrays with dimenions `(batch, length, 4)` where length is opti
 
 Labels are 2D arrays with dimensions `(batch, number_of_labels)` where number of labels is the length of the metadata file. You can easily recode this dataset inside the `HDF5` file for more bespoke training outputs.
 
+## Nonstandard Labels
+
+Labels are given to bed file sequentially (as a `SERIAL` ID would be given in a SQL table), however this behaviour can be overriden. Instead of one column metadata file, you may have a two column metadata file seperated by spaces. The second column is the numeric label of this file.
+
+```sh
+path/to/file1.bed.gz numeric_label_1
+path/to/file2/bed.gz numeric_label_2
+```
+
+See the example in `data/metadata_custom.txt`.
+
 ## Using the dataset in `Keras`
 
 You can use this data in your own neural network with the [TensorFlow I/O](https://www.tensorflow.org/io) API. Here is an example in Python.

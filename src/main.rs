@@ -185,6 +185,7 @@ fn main() -> std::io::Result<()> {
     info!("Reading metadata file.");
 
     let mut i = 1;
+    let mut values = Vec::new();
     {
         let metadata_file = File::open(opt.input)?;
         let metadata_file_reader = BufReader::new(metadata_file);
@@ -192,14 +193,25 @@ fn main() -> std::io::Result<()> {
         for line in metadata_file_reader.lines(){
             //debug!("Adding a bed file named {}", line.unwrap());
             let line_string = line.unwrap();
-            debug!("{}", line_string);
-            metadata.insert(line_string, i);
-            i += 1;
-            debug!("{}", i);
+            let vec = line_string.split(" ").collect::<Vec<&str>>();
+            println!("{:?}", vec);
+            if vec.len() == 1 {
+                debug!("{}", line_string);
+                metadata.insert(line_string, i);
+                i += 1;
+                debug!("{}", i);
+            } else {
+                metadata.insert(vec[0].to_string(), vec[1].parse::<u64>().unwrap());
+                values.push(vec[1].parse::<u64>().unwrap())
+            }
+
         }
     }
+    values.sort();
+    values.dedup();
 
-    let number_of_labels = i-1;
+    println!("Unique: {}", values.len());
+    let number_of_labels = values.len() as u64;
 
     // 2. Read in the files and create an interval tree, per chromosome. 
     //
@@ -295,7 +307,9 @@ fn main() -> std::io::Result<()> {
 
                         // Add back in the new vector of bed files
                         // for the range.
-                        v.push(bed_idx);
+                        if !v.contains(&bed_idx){
+                            v.push(bed_idx);
+                        }
                         regions_by_chr
                             .get_mut(&chr)
                             .unwrap()

@@ -1,0 +1,2 @@
+data/file1.bed.gz 1
+data/file2.bed.gz 1
