@@ -1,6 +1,6 @@
 [package]
 name = "genomic_interval_pipeline"
-version = "0.1.0"
+version = "0.1.2"
 authors = ["Christopher Cole <ccole@well.ox.ac.uk>"]
 description =  "A pipeline for creating HDF5 databases from genomic intervals."
 homepage = "https://github.com/Chris1221/genomic_interval_pipeline"

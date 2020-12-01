@@ -410,6 +410,7 @@ fn main() -> std::io::Result<()> {
     let mut i = HashMap::new();
     let mut seqs_db = HashMap::new();
     let mut labels_db = HashMap::new();
+    let mut coordinates_db = HashMap::new();
      
     j.insert("training", get_total(&counter, &training));
     j.insert("test", get_total(&counter, &test));
@@ -430,6 +431,13 @@ fn main() -> std::io::Result<()> {
                        .resizable(true)
                        .create(&format!("{}_{}", label, "labels"), (1, number_of_labels as usize) )
                        .unwrap());
+        coordinates_db.insert(label, file.new_dataset::<u64>()
+                       .resizable(true)
+                       .create(&format!("{}_{}", label, "coords"), (1,3) )
+                       .unwrap());
+
+
+
 
     }
     info!("One hot encoding sequences and writing to HDF5.");
@@ -451,6 +459,7 @@ fn main() -> std::io::Result<()> {
             // database.
             let writer = seqs_db.get(&dataset).unwrap().as_writer();
             let label_writer = labels_db.get(&dataset).unwrap().as_writer();
+            let coords_writer = coordinates_db.get(&dataset).unwrap().as_writer();
 
             // Expand the dimensionality of the database to ensure there's enoug
             // room for the incoming data.
@@ -464,6 +473,11 @@ fn main() -> std::io::Result<()> {
                 .unwrap()
                 .resize((this_i as usize, number_of_labels as usize))
                 .unwrap();
+            coordinates_db
+                .get(&dataset)
+                .unwrap()
+                .resize((this_i as usize, 3))
+                .unwrap();
             
             index.get_mut(&dataset)
                 .unwrap()
@@ -475,10 +489,14 @@ fn main() -> std::io::Result<()> {
             let out = one_hot_encode_seq(&seq, 600);
             // One hot encode label vector 
             let label = one_hot_encode_labels(annotation, number_of_labels);
+
+            let coord = array![n, region.min as usize, region.max as usize];
+
            
             // Write to resized dataset 
             writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
             label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
+            coords_writer.write_slice(&coord, s![this_i-1, ..]).unwrap();
 
             
             // One hot encode the labels and enter them into the array
@@ -611,4 +629,12 @@ fn to_numeric_vector(input: String) -> Vec::<usize> {
         out.push(i[3..].parse::<usize>().unwrap());
     }
     return out;
+}
+
+#[derive(hdf5::H5Type, Clone, PartialEq, Debug)]
+#[repr(C)]
+pub struct Coord {
+    chr: u64,
+    start: u64,
+    end: u64
 }
