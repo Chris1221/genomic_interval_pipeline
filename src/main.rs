@@ -186,6 +186,7 @@ fn main() -> std::io::Result<()> {
 
     let mut i = 1;
     let mut values = Vec::new();
+    let mut custom = false;
     {
         let metadata_file = File::open(opt.input)?;
         let metadata_file_reader = BufReader::new(metadata_file);
@@ -202,16 +203,23 @@ fn main() -> std::io::Result<()> {
                 debug!("{}", i);
             } else {
                 metadata.insert(vec[0].to_string(), vec[1].parse::<u64>().unwrap());
-                values.push(vec[1].parse::<u64>().unwrap())
+                values.push(vec[1].parse::<u64>().unwrap());
+                custom = true;
             }
 
         }
     }
-    values.sort();
-    values.dedup();
+    let number_of_labels: u64;
+    
+    if custom {
+        values.sort();
+        values.dedup();
 
-    println!("Unique: {}", values.len());
-    let number_of_labels = values.len() as u64;
+        println!("Unique: {}", values.len());
+        number_of_labels = values.len() as u64;
+    } else {
+        number_of_labels = i-1;
+    }
 
     // 2. Read in the files and create an interval tree, per chromosome. 
     //
@@ -260,81 +268,71 @@ fn main() -> std::io::Result<()> {
             let _line = line?;
             let vec = _line.split("\t").collect::<Vec<&str>>();
             let chr = vec[0].to_string();
-            let idx_vec = vec![bed_idx];
-            let range = Range::new(vec[1].parse::<u64>().unwrap(), vec[2].parse::<u64>().unwrap());
+            let mut idx_vec = vec![bed_idx];
+            let mut range = Range::new(vec[1].parse::<u64>().unwrap(), vec[2].parse::<u64>().unwrap());
 
             // If not a numeric chromosome, skip for now.
             if !valid_chromosomes.iter().any(|k| k == &chr) {
                 continue;
             }
 
-            if interval_trees[&chr].contains(range){
-                let mut to_delete: Vec<Range> = Vec::new();
-                for (_i, stored) in interval_trees[&chr]
-                                            .range(range.min, range.max)
-                                                .enumerate(){
-                    debug!("Region intersection, resolving...");
-                    if (range.min == stored.0.min) & (range.max == stored.0.max) {
-                        // If the range is the same, then just 
-                        // add the index.
-                        regions_by_chr
-                            .get_mut(&chr)
-                            .unwrap()
-                            .get_mut(&stored.0)
-                            .unwrap()
-                            .push(bed_idx);
-                    } else {
-                        // If not, then resolve the intersection.
-                        //
-                        // Get the current value for that region
-                        let mut v = regions_by_chr
-                            .get_mut(&chr)
-                            .unwrap()
-                            .get_mut(&stored.0)
-                            .unwrap()
-                            .clone();
-                        regions_by_chr
-                            .get_mut(&chr)
-                            .unwrap()
-                            .remove(&stored.0);
-                        
-                        // Create a new region based on both
-                        let new = Range::new(
-                            cmp::min(range.min, stored.0.min), 
-                            cmp::max(range.max, stored.0.max));
+            let mut to_delete = Vec::new();
 
-                        debug!("\tCreated a new region {:?}", new);
+            // Loop over all intersections, redefining range and idx_vec as I go
+            for (_i, stored) in interval_trees[&chr].range(range.min, range.max).enumerate(){
+                    // Get the current value for that region
+                    let mut v = regions_by_chr
+                        .get_mut(&chr)
+                        .unwrap()
+                        .get_mut(&stored.0)
+                        .unwrap()
+                        .clone();
+                    regions_by_chr
+                        .get_mut(&chr)
+                        .unwrap()
+                        .remove(&stored.0);
+                    
+                    // Extend the vector of the original
+                    idx_vec.extend(v.iter().cloned());
+                    idx_vec.sort();
+                    idx_vec.dedup();
+                    
+                if !((range.min == stored.0.min) & (range.max == stored.0.max)) {
+                    // Create a new region based on both
+                    debug!("Merging regions {}-{} and {}-{}", range.min, range.max, stored.0.min, stored.0.max);
+                    let new = Range::new(
+                        cmp::min(range.min, stored.0.min), 
+                        cmp::max(range.max, stored.0.max));
+                    debug!("    Now {}-{}", new.min, new.max);
+                     
+                    // Replace the range with this new one
+                    range = new;
+                    
+                    // Add this to the list of regions to be deleted
+                    debug!("Deleting region {}-{}", stored.0.min, stored.0.max);
+                    to_delete.push(stored.0);
 
-                        // Add back in the new vector of bed files
-                        // for the range.
-                        if !v.contains(&bed_idx){
-                            v.push(bed_idx);
-                        }
-                        regions_by_chr
-                            .get_mut(&chr)
-                            .unwrap()
-                            .insert(new, v.to_vec());
-
-                        // Add this to the list of regions to be deleted
-                        to_delete.push(stored.0) 
-                    }
                 }
-                for del in to_delete.iter(){
-                    interval_trees.get_mut(&chr).unwrap().delete(*del);
-                    debug!("Removed region {:?}", del)
-                }
-            } else {
-                // Bed_idx isn't used here, just a placeholder.
-                // The real indexing is done in the regions hashmap.
-                debug!("Added region {:?}", range);
-                interval_trees.get_mut(&chr).unwrap().insert(range, 1);
-                regions_by_chr
-                    .get_mut(&chr)
-                    .unwrap()
-                    .insert(range, idx_vec);
             }
+            for del in to_delete.iter(){
+                interval_trees.get_mut(&chr).unwrap().delete(*del);
+                debug!("Removed region {:?}", del)
+            } 
 
+            // Add back in the new vector of bed files
+            // for the range.
+            //if !v.contains(&bed_idx){
+            //   v.push(bed_idx);
+            //
+            //}
+            debug!("Inserting range {}-{}", range.min, range.max);
+            interval_trees.get_mut(&chr).unwrap().insert(range, 1);
+            regions_by_chr
+                .get_mut(&chr)
+                .unwrap()
+                .insert(range, idx_vec);
 
+            
         }
     
 
@@ -378,6 +376,9 @@ fn main() -> std::io::Result<()> {
         for (_i, stored) in interval_trees.get_mut(&idx.clone()).unwrap().iter().enumerate() {
             let corrected_range = center_region(&stored.0, opt.length);
             debug!("Corrected region {:?} to {:?}.", stored.0, corrected_range);
+
+            // Check if this overlaps with anything already in the interval trees
+
             // Adding range
             qc_interval_trees
                 .get_mut(&idx.clone())
