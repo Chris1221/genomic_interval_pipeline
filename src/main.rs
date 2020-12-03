@@ -49,16 +49,18 @@
 //! ### Arguments
 //!
 //!
-//!| Short | Long | Value | Description | 
-//!| :-:   | :-:  | :-: | :-- |
-//!| `-i` | `--input` | String | Path to a newline seperated list of bed files to process. | 
-//!| `-f` | `--fastq` | String | Path to faidx indexed, `bgzip` compressed reference FASTQ file |
-//!| `-o` | `--output` | String | Path to the output `.h5` file. |
-//!|     |  `--length` | Number | Standardised length of regions (default: `600`) |
-//!|     | `--test_chr` | String| Comma seperated list of chromosomes to use in the test set (default: `chr19,chr20`) | 
-//!|     | `--valid_chr` | String| Comma seperated list of chromosomes to use in the validation set (default: `chr21,chr22`) | 
-//!|     | `--loglevel` | String | Level of logging (default: `info`) | 
-//!
+//! | Short | Long | Value | Description | 
+//! | :-:   | :-:  | :-: | :-- |
+//! | `-i` | `--input` | String | Path to a newline seperated list of bed files to process. | 
+//! | `-f` | `--fastq` | String | Path to faidx indexed, `bgzip` compressed reference FASTQ file |
+//! | `-o` | `--output` | String | Path to the output `.h5` file. |
+//! | `-m` | `--min_overlap` | Number | Minimum overlap required to merge segments (default: `200`) |
+//! | `-e` | `--exclusive` | Bool | Perform multiclass learning rather than multilabel (i.e. exclude cases where multiple cell types are annotated, only writing unique values) (defaul: `false`) | 
+//! |     |  `--length` | Number | Standardised length of regions (default: `600`) |
+//! |     | `--test_chr` | String| Comma seperated list of chromosomes to use in the test set (default: `chr19,chr20`) | 
+//! |     | `--valid_chr` | String| Comma seperated list of chromosomes to use in the validation set (default: `chr21,chr22`) | 
+//! |     | `--loglevel` | String | Level of logging (default: `info`) | 
+//! 
 //!## Dataset Format
 //!
 //!HDF5 files are essentially directories of data. There are six tables within the dataset corresponding to the training, test, and validation sequences and their labels. 
