@@ -116,19 +116,19 @@ use memrange::Range;
 struct Opt {
 
     /// Newline seperated list of bed files to process.
-    #[structopt(short, long, default_value = "data/metadata.txt")]
+    #[structopt(short = "i", long, default_value = "data/metadata.txt")]
     input: PathBuf,
 
     /// Reference sequence 
-    #[structopt(short, long, parse(from_os_str), default_value = "data/blah.fq")]
+    #[structopt(short = "f", long, parse(from_os_str), default_value = "data/blah.fq")]
     fastq: PathBuf,
 
     /// Output filename
-    #[structopt(short, long, parse(from_os_str), default_value = "dataset.h5")]
+    #[structopt(short = "o", long, parse(from_os_str), default_value = "dataset.h5")]
     output: PathBuf,
    
     /// Size of the regions to report.
-    #[structopt(long, default_value = "600")]
+    #[structopt(short = "l", long, default_value = "600")]
     length: u64,
 
     /// Test chromosomes, seperated by commas.
@@ -138,6 +138,10 @@ struct Opt {
     /// Validation chromosomes, seperated by commas.
     #[structopt(long, default_value = "chr21,chr22")]
     valid_chr: String,
+
+    /// If creating a multi-label dataset, exclude cases where both are present.
+    #[structopt(short = "e", long)]
+    exclusive: bool,
 
     /// Log level. Defaults to Info (useful information and statistics). 
     #[structopt(long, default_value = "info")]
@@ -281,7 +285,7 @@ fn main() -> std::io::Result<()> {
             // Loop over all intersections, redefining range and idx_vec as I go
             for (_i, stored) in interval_trees[&chr].range(range.min, range.max).enumerate(){
                     // Get the current value for that region
-                    let mut v = regions_by_chr
+                    let v = regions_by_chr
                         .get_mut(&chr)
                         .unwrap()
                         .get_mut(&stored.0)
@@ -493,11 +497,22 @@ fn main() -> std::io::Result<()> {
 
             let coord = array![n, region.min as usize, region.max as usize];
 
-           
-            // Write to resized dataset 
-            writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
-            label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
-            coords_writer.write_slice(&coord, s![this_i-1, ..]).unwrap();
+            // If not exclusive, write everything
+            if !opt.exclusive { 
+                // Write to resized dataset 
+                writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
+                label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
+                coords_writer.write_slice(&coord, s![this_i-1, ..]).unwrap();
+                *i.get_mut(&dataset).unwrap() += 1;
+            } else {
+                if label.iter().sum::<u64>() == 1{
+                    println!("Not writing region because of exclusive option.");
+                    writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
+                    label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
+                    coords_writer.write_slice(&coord, s![this_i-1, ..]).unwrap();
+                    *i.get_mut(&dataset).unwrap() += 1;
+                }
+            }
 
             
             // One hot encode the labels and enter them into the array
@@ -505,7 +520,6 @@ fn main() -> std::io::Result<()> {
              //   .unwrap()
               //  .slice_mut(s![.., this_i]).assign(&label);
 
-            *i.get_mut(&dataset).unwrap() += 1;
             
         }
         pb.inc();
