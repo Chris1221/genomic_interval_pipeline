@@ -10,6 +10,7 @@ edition = "2018"
 keywords = ["genetics", "genomics", "HDF5", "keras", "intervals"]
 categories = ["command-line-utilities", "database", "science", ]
 readme = "README.md"
+exclude = ["data/"]
 
 [dependencies]
 structopt = "0.3.14"
@@ -22,8 +23,3 @@ hdf5 = "0.7.0"
 ndarray = "0.13.1"
 pbr = "1.0.3"
 flate2 = "1.0.19"
-
-[package]
-exclude = [
-    "data/",
-]
