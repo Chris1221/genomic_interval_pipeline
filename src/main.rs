@@ -203,7 +203,7 @@ fn main() -> std::io::Result<()> {
             //debug!("Adding a bed file named {}", line.unwrap());
             let line_string = line.unwrap();
             let vec = line_string.split(" ").collect::<Vec<&str>>();
-            println!("{:?}", vec);
+            //println!("{:?}", vec);
             if vec.len() == 1 {
                 debug!("{}", line_string);
                 metadata.insert(line_string, i);
@@ -223,7 +223,7 @@ fn main() -> std::io::Result<()> {
         values.sort();
         values.dedup();
 
-        println!("Unique: {}", values.len());
+        //println!("Unique: {}", values.len());
         number_of_labels = values.len() as u64;
     } else {
         number_of_labels = i-1;
@@ -468,6 +468,7 @@ fn main() -> std::io::Result<()> {
             let region_string = format!("{}:{}-{}", &chr_string, region.min, region.max);
             let this_i: usize = *i.get(&dataset).unwrap();
 
+
             // Get a reference to the writer function of the 
             // database.
             let writer = seqs_db.get(&dataset).unwrap().as_writer();
@@ -498,8 +499,11 @@ fn main() -> std::io::Result<()> {
 
             // Fetch sequence from fasta
             let seq = fa.fetch_seq_string(&chr_string, region.min as usize, (region.max -1) as usize).unwrap();
+
+            //println!("{}", seq);
             // One hot encode
             let out = one_hot_encode_seq(&seq, 600);
+            //println!("{:?}", out);
             // One hot encode label vector 
             let label = one_hot_encode_labels(annotation, number_of_labels);
 
@@ -514,7 +518,7 @@ fn main() -> std::io::Result<()> {
                 *i.get_mut(&dataset).unwrap() += 1;
             } else {
                 if label.iter().sum::<u64>() == 1{
-                    println!("Not writing region because of exclusive option.");
+                    //println!("Not writing region because of exclusive option.");
                     writer.write_slice(&out, s![this_i-1, .., ..]).unwrap();
                     label_writer.write_slice(&label, s![this_i-1, ..]).unwrap();
                     coords_writer.write_slice(&coord, s![this_i-1, ..]).unwrap();
