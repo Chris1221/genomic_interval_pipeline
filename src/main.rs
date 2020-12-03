@@ -143,6 +143,10 @@ struct Opt {
     #[structopt(short = "e", long)]
     exclusive: bool,
 
+    /// Minimum overlapping sequence to merge. 
+    #[structopt(short = "m", long, default_value = "200")]
+    min_overlap: u64, 
+
     /// Log level. Defaults to Info (useful information and statistics). 
     #[structopt(long, default_value = "info")]
     loglevel: String,
@@ -284,7 +288,10 @@ fn main() -> std::io::Result<()> {
 
             // Loop over all intersections, redefining range and idx_vec as I go
             for (_i, stored) in interval_trees[&chr].range(range.min, range.max).enumerate(){
-                    // Get the current value for that region
+                // Get the current value for that region
+                let overlap = get_overlap(range, stored.0) ;
+
+                if overlap >= opt.min_overlap {
                     let v = regions_by_chr
                         .get_mut(&chr)
                         .unwrap()
@@ -301,20 +308,21 @@ fn main() -> std::io::Result<()> {
                     idx_vec.sort();
                     idx_vec.dedup();
                     
-                if !((range.min == stored.0.min) & (range.max == stored.0.max)) {
-                    // Create a new region based on both
-                    debug!("Merging regions {}-{} and {}-{}", range.min, range.max, stored.0.min, stored.0.max);
-                    let new = Range::new(
-                        cmp::min(range.min, stored.0.min), 
-                        cmp::max(range.max, stored.0.max));
-                    debug!("    Now {}-{}", new.min, new.max);
-                     
-                    // Replace the range with this new one
-                    range = new;
-                    
-                    // Add this to the list of regions to be deleted
-                    debug!("Deleting region {}-{}", stored.0.min, stored.0.max);
-                    to_delete.push(stored.0);
+                    if !((range.min == stored.0.min) & (range.max == stored.0.max)) {
+                        // Create a new region based on both
+                        debug!("Merging regions {}-{} and {}-{}", range.min, range.max, stored.0.min, stored.0.max);
+                        let new = Range::new(
+                            cmp::min(range.min, stored.0.min), 
+                            cmp::max(range.max, stored.0.max));
+                        debug!("    Now {}-{}", new.min, new.max);
+                         
+                        // Replace the range with this new one
+                        range = new;
+                        
+                        // Add this to the list of regions to be deleted
+                        debug!("Deleting region {}-{}", stored.0.min, stored.0.max);
+                        to_delete.push(stored.0);
+                    }
 
                 }
             }
@@ -543,7 +551,9 @@ fn main() -> std::io::Result<()> {
 ///
 /// The resulting region will be inserted into the interval tree.
 fn center_region(region: &memrange::Range, length: u64 ) -> Range {
-    let midpoint = region.min + (region.min + region.max) / 2;
+
+    debug!("Correcting range: {}-{}, Length {}", region.min, region.max, length);
+    let midpoint = (region.min + region.max) / 2;
     if (length / 2) > midpoint {
         return Range::new(0, length);
     } else  {   
@@ -652,4 +662,17 @@ pub struct Coord {
     chr: u64,
     start: u64,
     end: u64
+}
+
+fn get_overlap(interval1: Range, 
+                    interval2: Range) -> u64 {
+
+    if interval2.min > interval1.max || interval1.min > interval2.max {
+        return 0; // does not contribute
+    }
+
+    let start = std::cmp::max(interval1.min, interval2.min);
+    let stop = std::cmp::min(interval1.max, interval2.max);
+
+    return stop - start;
 }
