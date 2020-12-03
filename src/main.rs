@@ -429,6 +429,13 @@ fn main() -> std::io::Result<()> {
     j.insert("test", get_total(&counter, &test));
     j.insert("validation", get_total(&counter, &validation));
 
+    info!("Total training n: {}",get_total(&counter, &training));
+    info!("Total test n: {}",get_total(&counter, &test));
+    info!("Total validation n: {}",get_total(&counter, &validation));
+
+
+
+
     for label in ["training", "test", "validation"].iter() {
         //seqs.insert(label, Array::zeros(( j[label] as usize, 4 as usize, opt.length as usize)));
         //labels.insert(label,  Array::zeros(( number_of_labels as usize, j[label] as usize)));
